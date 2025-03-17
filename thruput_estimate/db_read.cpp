@@ -6,6 +6,7 @@
 #include <mongocxx/instance.hpp>
 #include <mongocxx/uri.hpp>
 #include <mongocxx/client.hpp>
+#include <iostream>
 
 int main(int argc, char** argv)
 {
@@ -16,14 +17,14 @@ int main(int argc, char** argv)
     auto db = client["cDB"];
     auto collection = db["cColl"];
 
-    auto cursor = collection.find({});
+    auto cursor = collection.find().sort({._id =  1});
 
     int num = 0;
     for(auto&& doc : cursor) {
-        ++num;
         if(num % 10000 == 0) {
             std::cout << "Received: " << num << " docs." << std::endl;
         }
+        ++num;
     }
     std::cout << "Finished, Received: " << num << " docs." << std::endl;    
 }

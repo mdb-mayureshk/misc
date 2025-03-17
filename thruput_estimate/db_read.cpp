@@ -4,6 +4,7 @@
 //2) Copy binary to a dev pod and run from there to read data using a simple find() query 
 //
 #include <mongocxx/instance.hpp>
+#include <mongocxx/builder/stream/document.hpp>
 #include <mongocxx/uri.hpp>
 #include <mongocxx/client.hpp>
 #include <iostream>
@@ -17,7 +18,10 @@ int main(int argc, char** argv)
     auto db = client["cDB"];
     auto collection = db["cColl"];
 
-    auto cursor = collection.find().sort({._id =  1});
+    auto order = mongocxx::builder::stream::document{} << "_id" << 1 << mongocxx::builder::stream::finalize;
+    auto opts = mongocxx::options::find{};
+    opts.sort(order.view());
+    auto cursor = collection.find({}, opts);
 
     int num = 0;
     for(auto&& doc : cursor) {

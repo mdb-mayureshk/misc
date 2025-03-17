@@ -1,8 +1,9 @@
-//Inserts 100GB of data, consisting of 100k docs of 1MB each.
+//Inserts 100GB of data, consisting of 50M docs of 2K each.
 //Run from an evergreen machine to get reasonable upload times
 
 const { MongoClient, ServerApiVersion } = require('mongodb');
 //replace as appropriate
+//const uri = "mongodb+srv://mayuresh:mayuresh@cluster0.gccou.mongodb-dev.net/?retryWrites=true&w=majority&appName=Cluster0";
 const uri = "mongodb+srv://mayuresh:mayuresh@cluster0.gccou.mongodb-dev.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -25,20 +26,21 @@ async function run() {
     const database = client.db("cDB");
     const coll = database.collection("cColl");
 
-    const oneMBString = 'x'.repeat(1024*1024);
+    const twoKString = 'x'.repeat(1024*2);
     var idx = 0;
-    for (let k = 0; k < 20*500; k++) {
+    for (let k = 0; k < 10*1000; k++) {
         var docs = [];
-        for (let i = 0; i < 10; i++) {
-            docs.push({idx: idx, val: oneMBString});
+        for (let i = 0; i < 5000; i++) {
+            docs.push({idx: idx, val: twoKString});
             idx += 1;
         }
         const options = {ordered: true};
         const result = await coll.insertMany(docs, options);
-        if(k % 10000 == 0) {
+        if(k % 500000 == 0) {
           console.log(`Finished: ${k}`);
         }
     }
+    console.log(`Finished: ${k}`);    
   } finally {
       // Ensures that the client will close when you finish/error
       await client.close();

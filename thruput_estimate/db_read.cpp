@@ -73,11 +73,12 @@ int main(int argc, char** argv)
     auto db = client["cDB"];
     auto collection = db["cColl"];
 
-    std::string query = fmt::format("{{$bucketAuto: {{groupBy: \"$_id\", buckets: {}}}}}", numThreads);
-    std::cout << query << std::endl;
+    //std::string query = fmt::format("{{\"$bucketAuto\": {{\"groupBy\": \"$_id\", \"buckets\": {}}}}}", numThreads);
+    std::string bAutoDoc = fmt::format("{{\"groupBy\": \"$_id\", \"buckets\": {}}}", numThreads);
+    std::cout << bAutoDoc << std::endl;
 
-    auto qObj = bsoncxx::from_json(query);
-    auto pipeline = std::move(mongocxx::pipeline().bucket_auto(bsoncxx::document::view((uint8_t*)qObj.data(), qObj.length())));
+    auto qObj = bsoncxx::from_json(bAutoDoc);
+    auto pipeline = std::move(mongocxx::pipeline().bucket_auto({qObj}));
     auto cursor = collection.aggregate(pipeline);
 
     int numBuckets = 0;

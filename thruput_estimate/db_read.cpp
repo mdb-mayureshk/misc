@@ -1,5 +1,5 @@
 //1) Create an evergreen host with Amazon Linux 2 image, install mongocxx driver and build this program on that host with something like:
-//g++ -std=c++17 -pthread -I /usr/local/include/mongocxx/v_noabi/ -I /usr/local/include/bsoncxx/v_noabi/ ./db_read.cpp -L/usr/local/lib64 -lmongocxx-static -lmongoc-static-1.0 -lbsoncxx-static -lbson-static-1.0 -lfmt -lcrypto -lssl -lsasl2 -lresolv -lrt -ldl
+//g++ -std=c++17 -pthread -I /usr/local/include/mongocxx/v_noabi/ -I /usr/local/include/bsoncxx/v_noabi/ ./db_read.cpp -L/usr/local/lib64 -lmongocxx-static -lmongoc-static-1.0 -lbsoncxx-static -lbson-static-1.0 -lfmt -lcrypto -lssl -lsasl2 -lresolv -lrt -ldl -o db_read
 //
 //2) Copy binary to a dev pod and run from there to read data using a simple find() query 
 //
@@ -23,12 +23,12 @@ void logProgress(int threadId, int numDocs) {
 
 struct Partition {
     int threadId_;
-    mongocxx::uri uri_;
+    const mongocxx::uri& uri_;
     std::string min_;
     std::string max_;
     std::thread queryThr_;
 
-    Partition(int threadId, mongocxx::uri uri, std::string minId, std::string maxId) : threadId_{threadId}, uri_{std::move(uri)}, min_{minId}, max_{maxId} {}
+    Partition(int threadId, const mongocxx::uri& uri, std::string minId, std::string maxId) : threadId_{threadId}, uri_{uri}, min_{minId}, max_{maxId} {}
 
     void query() {
         mongocxx::client client(uri_);
@@ -48,6 +48,7 @@ struct Partition {
             if(numDocs % 10000 == 0) {
                 logProgress(threadId_, numDocs);
             }
+            ++numDocs;
         }
     }
 
@@ -92,7 +93,7 @@ int main(int argc, char** argv)
         auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         std::cout << "[" << std::ctime(&now) << "]" << std::endl;
         std::cout << bsoncxx::to_json(doc) << std::endl;
-        partitions.push_back(Partition{numBuckets, std::move(uri), doc["_id"]["min"].get_oid().value.to_string(), doc["_id"]["max"].get_oid().value.to_string()});
+        partitions.push_back(Partition{numBuckets, uri, doc["_id"]["min"].get_oid().value.to_string(), doc["_id"]["max"].get_oid().value.to_string()});
         ++numBuckets;
     }
 

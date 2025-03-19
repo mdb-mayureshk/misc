@@ -37,9 +37,9 @@ struct Partition {
 
         std::string q;
         if(threadId_ == 0) {
-            q = fmt::format("{{_id: {{$gte : ObjectId(\"{}\"), $lte: ObjectId(\"{}\")}}}}", min_, max_);
+            q = fmt::format("{{\"_id\": {{\"$gte\" : ObjectId(\"{}\"), \"$lte\": ObjectId(\"{}\")}}}}", min_, max_);
         } else {
-            q = fmt::format("{{_id: {{$gt : ObjectId(\"{}\"), $lte: ObjectId(\"{}\")}}}}", min_, max_);            
+            q = fmt::format("{{\"_id\": {{\"$gt\" : ObjectId(\"{}\"), \"$lte\": ObjectId(\"{}\")}}}}", min_, max_);
         }
         auto cursor = collection.find(bsoncxx::from_json(q));
         int numDocs = 0;

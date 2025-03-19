@@ -1,5 +1,5 @@
 //1) Create an evergreen host with Amazon Linux 2 image, install mongocxx driver and build this program on that host with something like:
-//g++ -std=c++17 -pthread -I /usr/local/include/mongocxx/v_noabi/ -I /usr/local/include/bsoncxx/v_noabi/ ./db_read.cpp -L/usr/local/lib64 -lmongocxx-static -lmongoc-static-1.0 -lbsoncxx-static -lbson-static-1.0 -lcrypto -lssl -lsasl2 -lresolv -lrt -ldl
+//g++ -std=c++17 -pthread -I /usr/local/include/mongocxx/v_noabi/ -I /usr/local/include/bsoncxx/v_noabi/ ./db_read.cpp -L/usr/local/lib64 -lmongocxx-static -lmongoc-static-1.0 -lbsoncxx-static -lbson-static-1.0 -lfmt -lcrypto -lssl -lsasl2 -lresolv -lrt -ldl
 //
 //2) Copy binary to a dev pod and run from there to read data using a simple find() query 
 //
@@ -11,6 +11,9 @@
 #include <iostream>
 #include <list>
 #include <thread>
+#include <mutex>
+#include <chrono>
+#include <ctime>
 
 void logProgress(int threadId, int numDocs) {
     static std::mutex lock;
@@ -79,11 +82,15 @@ int main(int argc, char** argv)
 
     auto qObj = bsoncxx::from_json(bAutoDoc);
     auto pipeline = std::move(mongocxx::pipeline().bucket_auto({qObj}));
+    auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::cout << "Partitioning at: " << std::ctime(&now) << std::endl;
     auto cursor = collection.aggregate(pipeline);
 
     int numBuckets = 0;
     std::list<Partition> partitions;
     for(auto&& doc : cursor) {
+        auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::cout << "[" << std::ctime(&now) << "]" << std::endl;
         std::cout << bsoncxx::to_json(doc) << std::endl;
         partitions.push_back(Partition{numBuckets, std::move(uri), doc["_id"]["min"].get_oid().value.to_string(), doc["_id"]["max"].get_oid().value.to_string()});
         ++numBuckets;
@@ -98,5 +105,6 @@ int main(int argc, char** argv)
         partition.stop();
     }
 
-    std::cout << "Stopped all partitions" << std::endl;
+    now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::cout << "[" << std::ctime(&now) << "] Stopped all partitions." << std::endl;
 }

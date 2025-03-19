@@ -17,10 +17,8 @@
 
 void logProgress(int threadId, int numDocs) {
     static std::mutex lock;
-    static int totalDocs = 0;
     std::lock_guard g{lock};
-    totalDocs += numDocs;
-    std::cout << "[ThreadId: " << threadId << "] ; numDocs=" << numDocs << "; totalDocs=" << totalDocs << std::endl;
+    std::cout << "[ThreadId: " << threadId << "] ; numDocs=" << numDocs << std::endl;
 }
 
 struct Partition {

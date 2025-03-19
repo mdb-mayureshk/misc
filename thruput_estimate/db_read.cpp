@@ -2,6 +2,7 @@
 //g++ -std=c++17 -pthread -O3 -g -I /usr/local/include/mongocxx/v_noabi/ -I /usr/local/include/bsoncxx/v_noabi/ ./db_read.cpp -L/usr/local/lib64 -lmongocxx-static -lmongoc-static-1.0 -lbsoncxx-static -lbson-static-1.0 -lfmt -lcrypto -lssl -lsasl2 -lresolv -lrt -ldl -o db_read
 //
 //2) Copy binary to a dev pod and run from there: prog uri numThreads
+//3) Expects that a cluster has been loaded with data in cDB:cColl collection. Run insert_docs.js to do so.
 //
 #include <bsoncxx/json.hpp>
 #include <mongocxx/instance.hpp>
@@ -69,6 +70,11 @@ struct Partition {
 
 int main(int argc, char** argv)
 {
+    if(argc < 2) {
+        std::cout << "prog uri [numThreads]" << std::endl;
+        return 1;
+    }
+    
     mongocxx::instance instance;
     mongocxx::uri uri(argv[1]);
     mongocxx::client client(uri);

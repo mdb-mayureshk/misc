@@ -1,7 +1,7 @@
-//1) Create an evergreen host with Amazon Linux 2 image, install mongocxx driver and build this program on that host with something like:
-//g++ -std=c++17 -pthread -I /usr/local/include/mongocxx/v_noabi/ -I /usr/local/include/bsoncxx/v_noabi/ ./db_read.cpp -L/usr/local/lib64 -lmongocxx-static -lmongoc-static-1.0 -lbsoncxx-static -lbson-static-1.0 -lfmt -lcrypto -lssl -lsasl2 -lresolv -lrt -ldl -o db_read
+//1) Create an evergreen host with Amazon Linux 2 image, install mongocxx driver and build this program on that host:
+//g++ -std=c++17 -pthread -O3 -g -I /usr/local/include/mongocxx/v_noabi/ -I /usr/local/include/bsoncxx/v_noabi/ ./db_read.cpp -L/usr/local/lib64 -lmongocxx-static -lmongoc-static-1.0 -lbsoncxx-static -lbson-static-1.0 -lfmt -lcrypto -lssl -lsasl2 -lresolv -lrt -ldl -o db_read
 //
-//2) Copy binary to a dev pod and run from there to read data using a simple find() query 
+//2) Copy binary to a dev pod and run from there: prog uri numThreads
 //
 #include <bsoncxx/json.hpp>
 #include <mongocxx/instance.hpp>
@@ -43,7 +43,8 @@ struct Partition {
             q = fmt::format("{{\"_id\": {{\"$gt\" : {{\"$oid\": \"{}\"}}, \"$lte\": {{\"$oid\": \"{}\"}}}}}}", min_, max_);
         }        
 
-        std::cout << "Query: " << q << std::endl;
+        auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::cout << "Starting partition " << threadId_ << " at: " << std::ctime(&now) << "; query=" << q << std::endl;
         auto cursor = collection.find(bsoncxx::from_json(q));
         int numDocs = 0;
         for(auto&& doc: cursor) {
@@ -80,7 +81,6 @@ int main(int argc, char** argv)
     auto db = client["cDB"];
     auto collection = db["cColl"];
 
-    //std::string query = fmt::format("{{\"$bucketAuto\": {{\"groupBy\": \"$_id\", \"buckets\": {}}}}}", numThreads);
     std::string bAutoDoc = fmt::format("{{\"groupBy\": \"$_id\", \"buckets\": {}}}", numThreads);
     std::cout << bAutoDoc << std::endl;
 
@@ -93,15 +93,11 @@ int main(int argc, char** argv)
     int numBuckets = 0;
     std::list<Partition> partitions;
     for(auto&& doc : cursor) {
-        auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::cout << "[" << std::ctime(&now) << "]" << std::endl;
-        std::cout << bsoncxx::to_json(doc) << std::endl;
         partitions.push_back(Partition{numBuckets, uri, doc["_id"]["min"].get_oid().value.to_string(), doc["_id"]["max"].get_oid().value.to_string()});
         ++numBuckets;
     }
 
     for (Partition& partition : partitions) {
-        std::cout << "Starting partition: " << partition.threadId_ << std::endl;
         partition.start();
     }
 

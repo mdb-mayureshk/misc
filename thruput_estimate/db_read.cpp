@@ -17,8 +17,10 @@
 
 void logProgress(int threadId, int numDocs) {
     static std::mutex lock;
+    static int totalDocs = 0;
     std::lock_guard g{lock};
-    std::cout << "[ThreadId: " << threadId << "] ; numDocs=" << numDocs << std::endl;
+    totalDocs += numDocs;
+    std::cout << "[ThreadId: " << threadId << "] ; numDocs=" << numDocs << "; totalDocs=" << totalDocs << std::endl;
 }
 
 struct Partition {
@@ -36,16 +38,19 @@ struct Partition {
         auto collection = db["cColl"];
 
         std::string q;
+
         if(threadId_ == 0) {
-            q = fmt::format("{{\"_id\": {{\"$gte\" : ObjectId(\"{}\"), \"$lte\": ObjectId(\"{}\")}}}}", min_, max_);
+            q = fmt::format("{{\"_id\": {{\"$gte\" : {{\"$oid\": \"{}\"}}, \"$lte\": {{\"$oid\": \"{}\"}}}}}}", min_, max_);
         } else {
-            q = fmt::format("{{\"_id\": {{\"$gt\" : ObjectId(\"{}\"), \"$lte\": ObjectId(\"{}\")}}}}", min_, max_);
-        }
+            q = fmt::format("{{\"_id\": {{\"$gt\" : {{\"$oid\": \"{}\"}}, \"$lte\": {{\"$oid\": \"{}\"}}}}}}", min_, max_);
+        }        
+
+        std::cout << "Query: " << q << std::endl;
         auto cursor = collection.find(bsoncxx::from_json(q));
         int numDocs = 0;
         for(auto&& doc: cursor) {
             (void)doc;
-            if(numDocs % 10000 == 0) {
+            if(numDocs % 1000000 == 0) {
                 logProgress(threadId_, numDocs);
             }
             ++numDocs;

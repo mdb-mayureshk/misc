@@ -25,11 +25,11 @@ void logProgress(int threadId, int numDocs) {
 struct Partition {
     int threadId_;
     const mongocxx::uri& uri_;
-    std::string min_;
-    std::string max_;
+    int64_t min_;
+    int64_t max_;
     std::thread queryThr_;
 
-    Partition(int threadId, const mongocxx::uri& uri, std::string minId, std::string maxId) : threadId_{threadId}, uri_{uri}, min_{minId}, max_{maxId} {}
+    Partition(int threadId, const mongocxx::uri& uri, int64_t minId, int64_t maxId) : threadId_{threadId}, uri_{uri}, min_{minId}, max_{maxId} {}
 
     void query() {
         mongocxx::client client(uri_);
@@ -39,9 +39,9 @@ struct Partition {
         std::string q;
 
         if(threadId_ == 0) {
-            q = fmt::format("{{\"_id\": {{\"$gte\" : {{\"$oid\": \"{}\"}}, \"$lte\": {{\"$oid\": \"{}\"}}}}}}", min_, max_);
+            q = fmt::format("{{\"_id\": {{\"$gte\" : {}, \"$lte\": {}}}}}", min_, max_);
         } else {
-            q = fmt::format("{{\"_id\": {{\"$gt\" : {{\"$oid\": \"{}\"}}, \"$lte\": {{\"$oid\": \"{}\"}}}}}}", min_, max_);
+            q = fmt::format("{{\"_id\": {{\"$gt\" : {}, \"$lte\": {}}}}}", min_, max_);            
         }        
 
         auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -99,7 +99,7 @@ int main(int argc, char** argv)
     int numBuckets = 0;
     std::list<Partition> partitions;
     for(auto&& doc : cursor) {
-        partitions.push_back(Partition{numBuckets, uri, doc["_id"]["min"].get_oid().value.to_string(), doc["_id"]["max"].get_oid().value.to_string()});
+        partitions.push_back(Partition{numBuckets, uri, doc["_id"]["min"].get_int64(), doc["_id"]["max"].get_int64()});
         ++numBuckets;
     }
 

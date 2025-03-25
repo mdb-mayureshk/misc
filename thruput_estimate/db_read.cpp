@@ -92,11 +92,13 @@ int main(int argc, char** argv)
 
     auto qObj = bsoncxx::from_json(bAutoDoc);
 
-    mongocxx::options::aggregate opts;
-    opts.max_time(std::chrono::milliseconds{3600000});
     auto pipeline = std::move(mongocxx::pipeline().bucket_auto({qObj}));
     auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::cout << "Partitioning at: " << std::ctime(&now) << std::endl;
+
+    mongocxx::options::aggregate opts;
+    opts.max_time(std::chrono::milliseconds{3600000});
+    opts.allow_disk_use(true);
     auto cursor = collection.aggregate(pipeline, opts);
 
     int numBuckets = 0;

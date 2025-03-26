@@ -20,7 +20,6 @@
 #include <mutex>
 #include <chrono>
 #include <ctime>
-#include "mongo/db/record_id.h"
 
 void logProgress(int threadId, int numDocs) {
     static std::mutex lock;
@@ -61,7 +60,7 @@ struct Partition {
             }
         }
         auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::cout << "Starting partition " << threadId_ << " at: " << std::ctime(&now) << "; naturalScan=" << naturalScan_ << " ; recordIdScan=" << recordIdScan_ << " ;query=" << q << std::endl;
+        std::cout << "Starting partition " << threadId_ << " at: " << std::ctime(&now) << "; naturalScan=" << naturalScan_ << " ; recordIdScan=" << recordIdScan_ << std::endl;
 
         mongocxx::cursor *cursor;
         if(recordIdScan_) {
@@ -70,7 +69,7 @@ struct Partition {
             using bsoncxx::builder::basic::kvp;
             mongocxx::pipeline p;
             p.project(make_document(kvp("_id", 1), kvp("rid", make_document(kvp("$meta", "recordId")))));
-            p.sort(make_document(kvp("$sort", make_document(kvp("$rid", 1)))));
+            p.sort(make_document(kvp("rid", 1)));
 
             mongocxx::options::aggregate opts;
             opts.allow_disk_use(true);

@@ -164,7 +164,13 @@ int main(int argc, char** argv)
 
         int numBuckets = 0;
 
+        bool first = true;
         for (auto&& doc : cursor) {
+            if (!first) {
+                auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+                std::cout << "First doc at: " << std::ctime(&now) << std::endl;
+                first = true;
+            }
             partitions.push_back(Partition{
                 numBuckets, uri, doc["_id"]["min"].get_int64(), doc["_id"]["max"].get_int64()});
             ++numBuckets;

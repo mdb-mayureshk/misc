@@ -50,7 +50,7 @@ struct Partition {
             }
         }
         auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::cout << "Starting partition " << threadId_ << " at: " << std::ctime(&now) << "; query=" << q << std::endl;
+        std::cout << "Starting partition " << threadId_ << " at: " << std::ctime(&now) << "; naturalScan=" << naturalScan_ << " ;query=" << q << std::endl;
 
         mongocxx::options::find opts;
         if(naturalScan_) {

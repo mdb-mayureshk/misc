@@ -103,6 +103,9 @@ int main(int argc, char** argv)
                 std::cout << "prog uri [--natural]|[--numThreads <>]" << std::endl;
                 return 1;
             }
+        } else {
+            std::cout << "prog uri [--natural]|[--numThreads <>]" << std::endl;
+            return 1;
         }
     }
 

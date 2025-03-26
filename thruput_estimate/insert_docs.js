@@ -4,6 +4,7 @@
 const { MongoClient, ServerApiVersion, ExplainVerbosity } = require('mongodb');
 //replace as appropriate
 const uri = "mongodb+srv://mayuresh:mayuresh@cluster0.gccou.mongodb-dev.net/?retryWrites=true&w=majority&appName=Cluster0";
+const crypto = require("crypto")
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -14,17 +15,31 @@ const client = new MongoClient(uri, {
   }
 });
 
+function bytesToInt64(bytes) {
+  if (bytes.length !== 8) {
+    throw new Error("Byte array must be 8 bytes long for Int64 conversion.");
+  }
+
+  let result = 0n;
+  for (let i = 0; i < 8; i++) {
+    result <<= 8n;
+    result |= BigInt(bytes[i]);
+  }
+  return result;
+}
+
 function getRandomInt64() {
-  const arr = new BigInt64Array(1);
-  crypto.getRandomValues(arr);
-  return arr[0];
+  //const arr = new BigInt64Array(1);
+  //crypto.getRandomValues(arr);
+  //return arr[0];
+  return bytesToInt64(crypto.randomBytes(8));
 }
 
 async function run() {
   try {
     var useObjectId = false;
     if(process.argv.length > 2) {
-      if(process.argv[2] === "--objectid") {
+      if(process.argv[3] === "--objectid") {
         useObjectId = true;
       }
     }

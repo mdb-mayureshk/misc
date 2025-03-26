@@ -23,13 +23,15 @@ void logProgress(int threadId, int numDocs) {
 }
 
 struct Partition {
-    int threadId_;
+    int threadId_ = 0;
     const mongocxx::uri& uri_;
-    int64_t min_;
-    int64_t max_;
+    int64_t min_ = -1;
+    int64_t max_ = -1;
+    bool naturalScan_ = false;
     std::thread queryThr_;
 
     Partition(int threadId, const mongocxx::uri& uri, int64_t minId, int64_t maxId) : threadId_{threadId}, uri_{uri}, min_{minId}, max_{maxId} {}
+    Partition(const mongocxx::uri& uri) : uri_{uri}, naturalScan_{true} {}
 
     void query() {
         mongocxx::client client(uri_);
@@ -38,15 +40,25 @@ struct Partition {
 
         std::string q;
 
-        if(threadId_ == 0) {
-            q = fmt::format("{{\"_id\": {{\"$gte\" : {}, \"$lte\": {}}}}}", min_, max_);
+        if (naturalScan_) {
+            q = R"({})";
         } else {
-            q = fmt::format("{{\"_id\": {{\"$gt\" : {}, \"$lte\": {}}}}}", min_, max_);            
-        }        
-
+            if (threadId_ == 0) {
+                q = fmt::format("{{\"_id\": {{\"$gte\" : {}, \"$lte\": {}}}}}", min_, max_);
+            } else {
+                q = fmt::format("{{\"_id\": {{\"$gt\" : {}, \"$lte\": {}}}}}", min_, max_);
+            }
+        }
         auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         std::cout << "Starting partition " << threadId_ << " at: " << std::ctime(&now) << "; query=" << q << std::endl;
-        auto cursor = collection.find(bsoncxx::from_json(q));
+
+        mongocxx::options::find opts;
+        if(naturalScan_) {
+            std::string hintDoc = R"({"$natural": 1})";
+            opts.hint(mongocxx::hint{bsoncxx::from_json(hintDoc)});
+        }
+        auto cursor = collection.find(bsoncxx::from_json(q), opts);
+
         int numDocs = 0;
         for(auto&& doc: cursor) {
             (void)doc;
@@ -71,7 +83,7 @@ struct Partition {
 int main(int argc, char** argv)
 {
     if(argc < 2) {
-        std::cout << "prog uri [numThreads]" << std::endl;
+        std::cout << "prog uri [--natural]|[--numThreads <>]" << std::endl;
         return 1;
     }
     
@@ -79,35 +91,52 @@ int main(int argc, char** argv)
     mongocxx::uri uri(argv[1]);
     mongocxx::client client(uri);
 
+    bool isNaturalScan = false;
     int numThreads = 1;
     if(argc > 2) {
-        numThreads = atoi(argv[2]);
+        if(std::string{argv[2]} == "--natural") {
+            isNaturalScan = true;
+        } else if(std::string{argv[2]} == "--numThreads") {
+            if(argc > 3) {
+                numThreads = atoi(argv[3]);
+            } else {
+                std::cout << "prog uri [--natural]|[--numThreads <>]" << std::endl;
+                return 1;
+            }
+        }
     }
 
     auto db = client["cDB"];
     auto collection = db["cColl"];
 
-    std::string bAutoDoc = fmt::format("{{\"groupBy\": \"$_id\", \"buckets\": {}}}", numThreads);
-    std::cout << bAutoDoc << std::endl;
-
-    auto qObj = bsoncxx::from_json(bAutoDoc);
-
-    auto pipeline = std::move(mongocxx::pipeline().bucket_auto({qObj}));
     auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::cout << "Partitioning at: " << std::ctime(&now) << std::endl;
 
-    mongocxx::options::aggregate opts;
-    opts.max_time(std::chrono::milliseconds{3600000});
-    opts.allow_disk_use(true);
-    std::string hintDoc = R"({"$natural": 1})";
-    opts.hint(mongocxx::hint{bsoncxx::from_json(hintDoc)});
-    auto cursor = collection.aggregate(pipeline, opts);
-
-    int numBuckets = 0;
     std::list<Partition> partitions;
-    for(auto&& doc : cursor) {
-        partitions.push_back(Partition{numBuckets, uri, doc["_id"]["min"].get_int64(), doc["_id"]["max"].get_int64()});
-        ++numBuckets;
+    if (!isNaturalScan) {
+        std::string bAutoDoc =
+            fmt::format("{{\"groupBy\": \"$_id\", \"buckets\": {}}}", numThreads);
+        std::cout << bAutoDoc << std::endl;
+
+        auto qObj = bsoncxx::from_json(bAutoDoc);
+
+        auto pipeline = std::move(mongocxx::pipeline().bucket_auto({qObj}));
+
+        mongocxx::options::aggregate opts;
+        opts.max_time(std::chrono::milliseconds{3600000});
+        opts.allow_disk_use(true);
+        opts.hint(mongocxx::hint{"_id_"});
+        auto cursor = collection.aggregate(pipeline, opts);
+
+        int numBuckets = 0;
+
+        for (auto&& doc : cursor) {
+            partitions.push_back(Partition{
+                numBuckets, uri, doc["_id"]["min"].get_int64(), doc["_id"]["max"].get_int64()});
+            ++numBuckets;
+        }
+    } else {
+        partitions.push_back(Partition{uri});
     }
 
     for (Partition& partition : partitions) {

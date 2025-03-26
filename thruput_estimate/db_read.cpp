@@ -99,7 +99,8 @@ int main(int argc, char** argv)
     mongocxx::options::aggregate opts;
     opts.max_time(std::chrono::milliseconds{3600000});
     opts.allow_disk_use(true);
-    opts.hint(mongocxx::hint{"_id_"});
+    std::string hintDoc = R"({"$natural": 1})";
+    opts.hint(mongocxx::hint{bsoncxx::from_json(hintDoc)});
     auto cursor = collection.aggregate(pipeline, opts);
 
     int numBuckets = 0;

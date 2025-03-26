@@ -4,17 +4,23 @@
 //2) Copy binary to a dev pod and run from there: prog uri numThreads
 //3) Expects that a cluster has been loaded with data in cDB:cColl collection. Run insert_docs.js to do so.
 //
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/document/value.hpp>
 #include <bsoncxx/json.hpp>
 #include <mongocxx/instance.hpp>
+#include <mongocxx/options/aggregate.hpp>
 #include <mongocxx/uri.hpp>
 #include <mongocxx/client.hpp>
 #include <fmt/format.h>
 #include <iostream>
 #include <list>
+#include <stdexcept>
 #include <thread>
 #include <mutex>
 #include <chrono>
 #include <ctime>
+#include "mongo/db/record_id.h"
 
 void logProgress(int threadId, int numDocs) {
     static std::mutex lock;
@@ -28,10 +34,15 @@ struct Partition {
     int64_t min_ = -1;
     int64_t max_ = -1;
     bool naturalScan_ = false;
+    bool recordIdScan_ = false;
     std::thread queryThr_;
 
     Partition(int threadId, const mongocxx::uri& uri, int64_t minId, int64_t maxId) : threadId_{threadId}, uri_{uri}, min_{minId}, max_{maxId} {}
-    Partition(const mongocxx::uri& uri) : uri_{uri}, naturalScan_{true} {}
+    Partition(const mongocxx::uri& uri, bool naturalScan, bool recordIdScan) : uri_{uri}, naturalScan_{naturalScan}, recordIdScan_{recordIdScan} {
+        if(naturalScan_ && recordIdScan_) {
+            throw std::invalid_argument("Exactly one of naturalScan/recordIdScan expected");
+        }
+    }
 
     void query() {
         mongocxx::client client(uri_);
@@ -50,17 +61,33 @@ struct Partition {
             }
         }
         auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::cout << "Starting partition " << threadId_ << " at: " << std::ctime(&now) << "; naturalScan=" << naturalScan_ << " ;query=" << q << std::endl;
+        std::cout << "Starting partition " << threadId_ << " at: " << std::ctime(&now) << "; naturalScan=" << naturalScan_ << " ; recordIdScan=" << recordIdScan_ << " ;query=" << q << std::endl;
 
-        mongocxx::options::find opts;
-        if(naturalScan_) {
-            std::string hintDoc = R"({"$natural": 1})";
-            opts.hint(mongocxx::hint{bsoncxx::from_json(hintDoc)});
+        mongocxx::cursor *cursor;
+        if(recordIdScan_) {
+            //R"([{$project: {_id: 1, rid: {$meta: 'recordId'}}}, {$sort: {rid: 1}}])";
+            using bsoncxx::builder::basic::make_document;
+            using bsoncxx::builder::basic::kvp;
+            mongocxx::pipeline p;
+            p.project(make_document(kvp("_id", 1), kvp("rid", make_document(kvp("$meta", "recordId")))));
+            p.sort(make_document(kvp("$sort", make_document(kvp("$rid", 1)))));
+
+            mongocxx::options::aggregate opts;
+            opts.allow_disk_use(true);
+            auto c = collection.aggregate(p, opts);
+            cursor = new mongocxx::cursor{std::move(c)};
+        } else {
+            mongocxx::options::find opts;
+            if (naturalScan_) {
+                std::string hintDoc = R"({"$natural": 1})";
+                opts.hint(mongocxx::hint{bsoncxx::from_json(hintDoc)});
+            }
+            auto c = collection.find(bsoncxx::from_json(q), opts);
+            cursor = new mongocxx::cursor{std::move(c)};
         }
-        auto cursor = collection.find(bsoncxx::from_json(q), opts);
 
         int numDocs = 0;
-        for(auto&& doc: cursor) {
+        for(auto&& doc: *cursor) {
             (void)doc;
             if(numDocs % 1000000 == 0) {
                 logProgress(threadId_, numDocs);
@@ -83,7 +110,7 @@ struct Partition {
 int main(int argc, char** argv)
 {
     if(argc < 2) {
-        std::cout << "prog uri [--natural]|[--numThreads <>]" << std::endl;
+        std::cout << "prog uri [--natural]|[--recordId]|[--numThreads <>]" << std::endl;
         return 1;
     }
     
@@ -92,19 +119,22 @@ int main(int argc, char** argv)
     mongocxx::client client(uri);
 
     bool isNaturalScan = false;
+    bool isRecordIdScan = false;
     int numThreads = 1;
     if(argc > 2) {
         if(std::string{argv[2]} == "--natural") {
             isNaturalScan = true;
+        } else if(std::string{argv[2]} == "--recordId") {
+            isRecordIdScan = true;
         } else if(std::string{argv[2]} == "--numThreads") {
             if(argc > 3) {
                 numThreads = atoi(argv[3]);
             } else {
-                std::cout << "prog uri [--natural]|[--numThreads <>]" << std::endl;
+                std::cout << "prog uri [--natural]|[--recordId]|[--numThreads <>]" << std::endl;
                 return 1;
             }
         } else {
-            std::cout << "prog uri [--natural]|[--numThreads <>]" << std::endl;
+            std::cout << "prog uri [--natural]|[--recordId]|[--numThreads <>]" << std::endl;
             return 1;
         }
     }
@@ -116,7 +146,9 @@ int main(int argc, char** argv)
     std::cout << "Partitioning at: " << std::ctime(&now) << std::endl;
 
     std::list<Partition> partitions;
-    if (!isNaturalScan) {
+    if(isNaturalScan || isRecordIdScan) {
+        partitions.push_back(Partition{uri, isNaturalScan, isRecordIdScan});
+    } else {
         std::string bAutoDoc =
             fmt::format("{{\"groupBy\": \"$_id\", \"buckets\": {}}}", numThreads);
         std::cout << bAutoDoc << std::endl;
@@ -138,8 +170,6 @@ int main(int argc, char** argv)
                 numBuckets, uri, doc["_id"]["min"].get_int64(), doc["_id"]["max"].get_int64()});
             ++numBuckets;
         }
-    } else {
-        partitions.push_back(Partition{uri});
     }
 
     for (Partition& partition : partitions) {

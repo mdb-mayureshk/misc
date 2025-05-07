@@ -3,7 +3,7 @@
 
 const { MongoClient, ServerApiVersion, ExplainVerbosity } = require('mongodb');
 //replace as appropriate
-const uri = "mongodb+srv://mayuresh:mayuresh@cluster0.gccou.mongodb-dev.net/?retryWrites=true&w=majority&appName=Cluster0";
+const uri = "mongodb+srv://mayureshtmp:mayureshtmp@cluster0.qcohq.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 const crypto = require("crypto")
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -29,17 +29,29 @@ function bytesToInt64(bytes) {
 }
 
 function getRandomInt64() {
-  //const arr = new BigInt64Array(1);
-  //crypto.getRandomValues(arr);
-  //return arr[0];
   return bytesToInt64(crypto.randomBytes(8));
+}
+
+function generateRandomString(length) {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const charactersLength = characters.length;
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+  }
+  return result;
+}
+
+function generateShardId(idx) {
+    const myShards = ["RedShard", "BlueShard", "YellowShard"]; 
+    return myShards[idx % 3];
 }
 
 async function run() {
   try {
     var useObjectId = false;
     if(process.argv.length > 2) {
-      if(process.argv[3] === "--objectid") {
+      if(process.argv[2] === "--objectid") {
         useObjectId = true;
       }
     }
@@ -52,13 +64,16 @@ async function run() {
     const database = client.db("cDB");
     const coll = database.collection("cColl");
 
-    const twoKString = 'x'.repeat(1024*2);
     var idx = 0;
-    for (let k = 0; k < 10*1000; k++) {
+    //var outerLoopCount = 100*1000;
+    var outerLoopCount = 5*1000;
+    var innerBatchCount = 2*5000;
+    const twoKString = generateRandomString(2048) 
+    for (let k = 0; k < outerLoopCount; k++) {
         var docs = [];
-        for (let i = 0; i < 5000; i++) {
+        for (let i = 0; i < innerBatchCount; i++) {
           if(useObjectId) {
-            docs.push({idx: idx, val: twoKString});
+            docs.push({idx: idx, myShard: generateShardId(idx), val: twoKString});
           } else {
             docs.push({_id: getRandomInt64(), idx: idx, val: twoKString});
           }
@@ -66,7 +81,7 @@ async function run() {
         }
         const options = {ordered: true};
         const result = await coll.insertMany(docs, options);
-        if(k % 500000 == 0) {
+        if(k % 1000 == 0) {
           console.log(`Finished: ${k}`);
         }
     }
